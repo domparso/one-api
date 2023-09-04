@@ -303,15 +303,19 @@ const LogsTable = () => {
               >
                 消耗额度
               </Table.HeaderCell>
-              <Table.HeaderCell
-                style={{ cursor: 'pointer' }}
-                onClick={() => {
-                  sortLog('content');
-                }}
-                width={isAdminUser ? 4 : 5}
-              >
-                详情
-              </Table.HeaderCell>
+              {
+                  isAdminUser && (
+                      <Table.HeaderCell
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => {
+                            sortLog('content');
+                          }}
+                          width={isAdminUser ? 4 : 5}
+                      >
+                        详情
+                      </Table.HeaderCell>
+                  )
+              }
             </Table.Row>
           </Table.Header>
 
