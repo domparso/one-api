@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -14,15 +15,12 @@ import (
 	"strconv"
 )
 
-//go:embed web/build
+//go:embed web/build/*
 var buildFS embed.FS
 
-//go:embed web/build/index.html
-var indexPage []byte
-
 func main() {
-	common.SetupGinLog()
-	common.SysLog("One API " + common.Version + " started")
+	common.SetupLogger()
+	common.SysLog(fmt.Sprintf("One API %s started with theme %s", common.Version, common.Theme))
 	if os.Getenv("GIN_MODE") != "debug" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -50,18 +48,17 @@ func main() {
 	// Initialize options
 	model.InitOptionMap()
 	if common.RedisEnabled {
+		// for compatibility with old versions
+		common.MemoryCacheEnabled = true
+	}
+	if common.MemoryCacheEnabled {
+		common.SysLog("memory cache enabled")
+		common.SysError(fmt.Sprintf("sync frequency: %d seconds", common.SyncFrequency))
 		model.InitChannelCache()
 	}
-	if os.Getenv("SYNC_FREQUENCY") != "" {
-		frequency, err := strconv.Atoi(os.Getenv("SYNC_FREQUENCY"))
-		if err != nil {
-			common.FatalLog("failed to parse SYNC_FREQUENCY: " + err.Error())
-		}
-		common.SyncFrequency = frequency
-		go model.SyncOptions(frequency)
-		if common.RedisEnabled {
-			go model.SyncChannelCache(frequency)
-		}
+	if common.MemoryCacheEnabled {
+		go model.SyncOptions(common.SyncFrequency)
+		go model.SyncChannelCache(common.SyncFrequency)
 	}
 	if os.Getenv("CHANNEL_UPDATE_FREQUENCY") != "" {
 		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_UPDATE_FREQUENCY"))
@@ -85,16 +82,17 @@ func main() {
 	controller.InitTokenEncoders()
 
 	// Initialize HTTP server
-	server := gin.Default()
+	server := gin.New()
+	server.Use(gin.Recovery())
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
-	server.Use(middleware.CORS())
-
+	server.Use(middleware.RequestId())
+	middleware.SetUpLogger(server)
 	// Initialize session store
 	store := cookie.NewStore([]byte(common.SessionSecret))
 	server.Use(sessions.Sessions("session", store))
 
-	router.SetRouter(server, buildFS, indexPage)
+	router.SetRouter(server, buildFS)
 	var port = os.Getenv("PORT")
 	if port == "" {
 		port = strconv.Itoa(*common.Port)
